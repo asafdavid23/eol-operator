@@ -61,7 +61,7 @@ func (t *TeamsNotifier) Send(ctx context.Context, alert *helmv1alpha1.HelmEOLAle
 	if err != nil {
 		return fmt.Errorf("posting to teams webhook: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Power Automate HTTP triggers return 202 Accepted.
 	// Old Office 365 Connectors returned 200 — accept both for compatibility.

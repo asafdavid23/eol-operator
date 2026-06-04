@@ -205,9 +205,9 @@ func (r *HelmEOLAlertReconciler) reconcilePending(ctx context.Context, alert *he
 		return ctrl.Result{}, err
 	}
 
-	// Requeue: true means "put this back in the queue immediately, don't wait".
-	// This causes the Enriching case to run in the very next reconcile loop.
-	return ctrl.Result{Requeue: true}, nil
+	// The status update above triggers a watch event that re-enqueues this object,
+	// causing the Enriching phase to run in the next reconcile loop without delay.
+	return ctrl.Result{}, nil
 }
 
 // reconcileEnriching calls the AI enricher then dispatches notifications.

@@ -99,7 +99,7 @@ func (c *RegistryClient) searchArtifactHub(ctx context.Context, chartName string
 	}
 	// defer closes the body when this function returns, even on error paths.
 	// Forgetting this would leak the TCP connection.
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("artifacthub search %q: HTTP %d", chartName, resp.StatusCode)
@@ -163,7 +163,7 @@ func (c *RegistryClient) fetchFromArtifactHubURL(ctx context.Context, src string
 	if err != nil {
 		return "", fmt.Errorf("artifacthub direct lookup %q: %w", src, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("artifacthub direct lookup %q: HTTP %d", src, resp.StatusCode)

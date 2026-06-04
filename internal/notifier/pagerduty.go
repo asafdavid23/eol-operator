@@ -40,7 +40,7 @@ type PagerDutyNotifier struct {
 // minSeverity should be one of "minor", "major", "eol". Pass "major" if unsure.
 func NewPagerDutyNotifier(routingKey, minSeverity string) *PagerDutyNotifier {
 	if minSeverity == "" {
-		minSeverity = "major"
+		minSeverity = severityMajor
 	}
 	return &PagerDutyNotifier{
 		routingKey:  routingKey,
@@ -77,7 +77,7 @@ func (p *PagerDutyNotifier) Send(ctx context.Context, alert *helmv1alpha1.HelmEO
 	if err != nil {
 		return fmt.Errorf("posting to pagerduty: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// PagerDuty returns 202 Accepted on success (event is queued, not yet processed).
 	if resp.StatusCode != http.StatusAccepted {
@@ -150,9 +150,9 @@ func (p *PagerDutyNotifier) buildEvent(alert *helmv1alpha1.HelmEOLAlert, report 
 // minimum severity. Severity order: minor < major < eol.
 func (p *PagerDutyNotifier) shouldPage(severity string) bool {
 	order := map[string]int{
-		"minor": 1,
-		"major": 2,
-		"eol":   3,
+		"minor":       1,
+		severityMajor: 2,
+		severityEOL:   3,
 	}
 	return order[severity] >= order[p.minSeverity]
 }

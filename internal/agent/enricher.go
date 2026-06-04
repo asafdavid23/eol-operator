@@ -67,6 +67,10 @@ type RiskReport struct {
 	Summary string `json:"summary"`
 }
 
+// typeString is the JSON Schema primitive type name for strings.
+// Defined as a constant to satisfy goconst (it appears 5 times in the schema).
+const typeString = "string"
+
 // AIEnricher calls the Claude API to produce a RiskReport for an outdated release.
 // Create one instance at startup and reuse it across reconcile calls.
 type AIEnricher struct {
@@ -103,7 +107,7 @@ var (
 // mustPropertiesToMap happens at init time, not per-request.
 var riskReportProperties = map[string]toolProperty{
 	"upgradePath": {
-		Type:        "string",
+		Type:        typeString,
 		Description: "Step-by-step version sequence to upgrade safely, with notes on intermediate stops required",
 	},
 	"riskScore": {
@@ -114,21 +118,21 @@ var riskReportProperties = map[string]toolProperty{
 	},
 	"breakingChanges": {
 		Type:        "array",
-		Items:       &toolProperty{Type: "string"},
+		Items:       &toolProperty{Type: typeString},
 		Description: "Breaking changes, API removals, or config renames between installed and latest versions",
 	},
 	"cvesFixed": {
 		Type:        "array",
-		Items:       &toolProperty{Type: "string"},
+		Items:       &toolProperty{Type: typeString},
 		Description: "CVE identifiers fixed in versions newer than the installed version",
 	},
 	"recommendedAction": {
-		Type:        "string",
+		Type:        typeString,
 		Enum:        []string{"upgrade", "urgent", "hold"},
 		Description: "upgrade=safe on next window, urgent=CVE/critical fix, hold=known issues with target",
 	},
 	"summary": {
-		Type:        "string",
+		Type:        typeString,
 		Description: "2-3 sentence human-readable summary for the notification message",
 	},
 }
@@ -179,7 +183,7 @@ Use the report_risk tool to return your assessment as structured data.`,
 	)
 
 	msg, err := e.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.Model(e.model),
+		Model:     e.model,
 		MaxTokens: 1024,
 		// Tools is []ToolUnionParam — the union type allows both custom tools
 		// (OfTool) and Anthropic built-in tools (e.g. OfBashTool20241022).

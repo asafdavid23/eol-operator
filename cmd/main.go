@@ -327,11 +327,11 @@ func main() {
 	// internal/controller/helmeolalert_controller.go.
 	// -------------------------------------------------------------------------
 	if err := (&controller.HelmEOLAlertReconciler{
-		Client:    mgr.GetClient(),  // shared caching k8s client (read/write CRDs, etc.)
-		Scheme:    mgr.GetScheme(),  // type registry — needed to decode objects
-		Watcher:   helmWatcher,      // Helm release reader (direct Secret access)
-		Enricher:  enricher,         // Claude AI enricher (nil = disabled)
-		Notifiers: notifiers,        // active notification channels (Teams, PD, etc.)
+		Client:    mgr.GetClient(), // shared caching k8s client (read/write CRDs, etc.)
+		Scheme:    mgr.GetScheme(), // type registry — needed to decode objects
+		Watcher:   helmWatcher,     // Helm release reader (direct Secret access)
+		Enricher:  enricher,        // Claude AI enricher (nil = disabled)
+		Notifiers: notifiers,       // active notification channels (Teams, PD, etc.)
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HelmEOLAlert")
 		os.Exit(1)

@@ -37,9 +37,11 @@ var _ = Describe("HelmEOLAlert Controller", func() {
 
 		ctx := context.Background()
 
+		const testNamespace = "default"
+
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 
 		newReconciler := func() *HelmEOLAlertReconciler {
@@ -56,11 +58,11 @@ var _ = Describe("HelmEOLAlert Controller", func() {
 			return &helmv1alpha1.HelmEOLAlert{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 				Spec: helmv1alpha1.HelmEOLAlertSpec{
 					ReleaseName:      resourceName,
-					Namespace:        "default",
+					Namespace:        testNamespace,
 					ChartName:        "cert-manager",
 					InstalledVersion: "1.11.0",
 					LatestVersion:    "1.16.3",
@@ -91,10 +93,8 @@ var _ = Describe("HelmEOLAlert Controller", func() {
 		It("Pending phase: transitions to Enriching on first reconcile", func() {
 			By("running the first reconcile")
 			r := newReconciler()
-			result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
-			// reconcilePending returns Requeue: true so the Enriching handler runs next.
-			Expect(result.Requeue).To(BeTrue())
 
 			By("checking the phase advanced to Enriching")
 			updated := &helmv1alpha1.HelmEOLAlert{}
