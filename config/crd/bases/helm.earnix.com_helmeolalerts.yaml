@@ -1,0 +1,143 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: helmeolalerts.helm.earnix.com
+spec:
+  group: helm.earnix.com
+  names:
+    kind: HelmEOLAlert
+    listKind: HelmEOLAlertList
+    plural: helmeolalerts
+    singular: helmeolalert
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          HelmEOLAlert is the Schema for the helmeolalerts API.
+          One HelmEOLAlert is created per outdated Helm release, in the same namespace
+          as the release itself. Its name equals the Helm release name.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is what the operator detected — written once at creation.
+            properties:
+              chartName:
+                description: |-
+                  ChartName is the upstream chart identifier, e.g. "cert-manager".
+                  A single ChartName can have multiple releases (e.g. dev, staging, prod).
+                type: string
+              installedVersion:
+                description: |-
+                  InstalledVersion is the semver string that is currently running in the cluster,
+                  e.g. "13.0.0". Captured once at alert creation.
+                type: string
+              latestVersion:
+                description: |-
+                  LatestVersion is the newest non-prerelease version found on ArtifactHub
+                  at the time of the last check, e.g. "24.0.2".
+                type: string
+              namespace:
+                description: Namespace is the Kubernetes namespace the Helm release
+                  lives in.
+                type: string
+              releaseName:
+                description: |-
+                  ReleaseName is the Helm release name, e.g. "cert-manager".
+                  This is the name you gave when running `helm install <ReleaseName> ...`.
+                type: string
+              severity:
+                description: |-
+                  Severity classifies how urgent the upgrade is:
+                    "minor" — same major version, patch/minor updates available
+                    "major" — one full major version behind (breaking changes likely)
+                    "eol"   — two or more major versions behind (consider this unsupported)
+                type: string
+              versionsBehind:
+                description: |-
+                  VersionsBehind is how many minor or major increments separate InstalledVersion
+                  from LatestVersion. Used to prioritise alerts: 11 versions behind is worse than 1.
+                type: integer
+            required:
+            - chartName
+            - installedVersion
+            - latestVersion
+            - namespace
+            - releaseName
+            - severity
+            - versionsBehind
+            type: object
+          status:
+            description: Status is the operator's running journal of what it has done
+              with this alert.
+            properties:
+              aiReportGenerated:
+                description: |-
+                  AIReportGenerated is true once the Claude API enrichment has completed
+                  and UpgradePath + RiskScore have been populated.
+                type: boolean
+              lastChecked:
+                description: |-
+                  LastChecked is the timestamp of the most recent version check against ArtifactHub.
+                  Pointer so it can be omitted (nil) before the first check completes.
+                format: date-time
+                type: string
+              notificationsSent:
+                description: |-
+                  NotificationsSent is the list of channels that have already received this alert,
+                  e.g. ["teams", "pagerduty"]. Used to prevent duplicate notifications on requeue.
+                  omitempty means a nil slice is omitted from the JSON, avoiding a CRD validation
+                  error for "required value".
+                items:
+                  type: string
+                type: array
+              phase:
+                description: |-
+                  Phase is the current lifecycle stage of this alert:
+                    ""            / "Pending"     — just created, not yet processed
+                    "Enriching"   — AI report is being generated
+                    "Notified"    — notifications sent, polling every 6h for upgrade
+                    "Acknowledged"— a human has acknowledged; operator will not re-notify
+                type: string
+              riskScore:
+                description: |-
+                  RiskScore is a 1–10 integer produced by the AI enricher.
+                  1 = trivial patch, 10 = critical / active CVE, immediate action required.
+                type: integer
+              upgradePath:
+                description: |-
+                  UpgradePath is the step-by-step upgrade route generated by the AI enricher,
+                  e.g. "13.0.0 → 18.0.0 → 24.0.2 (skip 16.x, breaking CRD changes in 19.0)".
+                  Empty until AIReportGenerated = true.
+                type: string
+            required:
+            - aiReportGenerated
+            - phase
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

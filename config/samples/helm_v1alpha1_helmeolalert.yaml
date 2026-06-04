@@ -1,0 +1,9 @@
+apiVersion: helm.earnix.com/v1alpha1
+kind: HelmEOLAlert
+metadata:
+  labels:
+    app.kubernetes.io/name: eol-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: helmeolalert-sample
+spec:
+  # TODO(user): Add fields here
