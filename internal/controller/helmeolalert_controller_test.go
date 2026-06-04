@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -38,47 +39,105 @@ var _ = Describe("HelmEOLAlert Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
-		helmeolalert := &helmv1alpha1.HelmEOLAlert{}
+
+		newReconciler := func() *HelmEOLAlertReconciler {
+			return &HelmEOLAlertReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+				// Watcher, Enricher, and Notifiers left nil:
+				//   - nil Enricher means reconcileEnriching skips AI enrichment
+				//   - empty Notifiers means no external calls are made
+			}
+		}
+
+		newAlert := func() *helmv1alpha1.HelmEOLAlert {
+			return &helmv1alpha1.HelmEOLAlert{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: helmv1alpha1.HelmEOLAlertSpec{
+					ReleaseName:      resourceName,
+					Namespace:        "default",
+					ChartName:        "cert-manager",
+					InstalledVersion: "1.11.0",
+					LatestVersion:    "1.16.3",
+					VersionsBehind:   5,
+					Severity:         "minor",
+				},
+			}
+		}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind HelmEOLAlert")
-			err := k8sClient.Get(ctx, typeNamespacedName, helmeolalert)
+			existing := &helmv1alpha1.HelmEOLAlert{}
+			err := k8sClient.Get(ctx, typeNamespacedName, existing)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &helmv1alpha1.HelmEOLAlert{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				Expect(k8sClient.Create(ctx, newAlert())).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
+			By("cleaning up the HelmEOLAlert resource")
 			resource := &helmv1alpha1.HelmEOLAlert{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance HelmEOLAlert")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &HelmEOLAlertReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
+		})
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
+		It("Pending phase: transitions to Enriching on first reconcile", func() {
+			By("running the first reconcile")
+			r := newReconciler()
+			result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+			// reconcilePending returns Requeue: true so the Enriching handler runs next.
+			Expect(result.Requeue).To(BeTrue())
+
+			By("checking the phase advanced to Enriching")
+			updated := &helmv1alpha1.HelmEOLAlert{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, updated)).To(Succeed())
+			Expect(updated.Status.Phase).To(Equal("Enriching"))
+			Expect(updated.Status.AIReportGenerated).To(BeFalse())
+			Expect(updated.Status.LastChecked).NotTo(BeNil())
+		})
+
+		It("Enriching phase: transitions to Notified with no enricher or notifiers", func() {
+			By("advancing to Enriching via the first reconcile")
+			r := newReconciler()
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("running the second reconcile (Enriching → Notified)")
+			result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			// reconcileEnriching returns RequeueAfter 6h.
+			Expect(result.RequeueAfter).To(Equal(6 * time.Hour))
+
+			By("checking the phase advanced to Notified")
+			updated := &helmv1alpha1.HelmEOLAlert{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, updated)).To(Succeed())
+			Expect(updated.Status.Phase).To(Equal("Notified"))
+			// No enricher configured — AIReportGenerated must stay false.
+			Expect(updated.Status.AIReportGenerated).To(BeFalse())
+			// No notifiers configured — list must be empty.
+			Expect(updated.Status.NotificationsSent).To(BeEmpty())
+		})
+
+		It("Acknowledged phase: returns 24h requeue without error", func() {
+			By("manually setting phase to Acknowledged")
+			alert := &helmv1alpha1.HelmEOLAlert{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, alert)).To(Succeed())
+			alert.Status.Phase = "Acknowledged"
+			Expect(k8sClient.Status().Update(ctx, alert)).To(Succeed())
+
+			By("reconciling the Acknowledged alert")
+			r := newReconciler()
+			result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(24 * time.Hour))
 		})
 	})
 })

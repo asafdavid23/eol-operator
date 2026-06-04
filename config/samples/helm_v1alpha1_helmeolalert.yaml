@@ -4,6 +4,13 @@ metadata:
   labels:
     app.kubernetes.io/name: eol-operator
     app.kubernetes.io/managed-by: kustomize
-  name: helmeolalert-sample
+  name: cert-manager
+  namespace: cert-manager
 spec:
-  # TODO(user): Add fields here
+  releaseName: cert-manager
+  namespace: cert-manager
+  chartName: cert-manager
+  installedVersion: "1.11.0"
+  latestVersion: "1.16.3"
+  versionsBehind: 5
+  severity: minor

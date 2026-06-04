@@ -12,6 +12,34 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
+// toolProperty describes a single field in the JSON Schema for a Claude tool.
+// Using a typed struct rather than map[string]interface{} gives compile-time
+// validation of field names and prevents silent typos in schema definitions.
+type toolProperty struct {
+	Type        string        `json:"type"`
+	Description string        `json:"description,omitempty"`
+	Minimum     *int          `json:"minimum,omitempty"`
+	Maximum     *int          `json:"maximum,omitempty"`
+	Enum        []string      `json:"enum,omitempty"`
+	Items       *toolProperty `json:"items,omitempty"`
+}
+
+// mustPropertiesToMap serialises a map of toolProperty values into the
+// map[string]interface{} shape required by anthropic.ToolInputSchemaParam.
+// It panics on marshal failure, which can only happen at init time if a struct
+// field is not JSON-serialisable — a programming error, not a runtime condition.
+func mustPropertiesToMap(props map[string]toolProperty) map[string]interface{} {
+	b, err := json.Marshal(props)
+	if err != nil {
+		panic(fmt.Sprintf("marshaling tool properties: %v", err))
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(b, &out); err != nil {
+		panic(fmt.Sprintf("unmarshaling tool properties: %v", err))
+	}
+	return out
+}
+
 // RiskReport is the structured output produced by the AI enricher.
 // It is stored in HelmEOLAlertStatus and forwarded to notification channels.
 type RiskReport struct {
@@ -63,6 +91,48 @@ func NewAIEnricher(apiKey string) *AIEnricher {
 	}
 }
 
+// riskScoreMin and riskScoreMax are pointer-typed so toolProperty can
+// distinguish "not set" (nil) from "set to zero".
+var (
+	riskScoreMin = 1
+	riskScoreMax = 10
+)
+
+// riskReportProperties is the typed schema for the report_risk tool.
+// Defined as a package-level variable so the one-time JSON round-trip in
+// mustPropertiesToMap happens at init time, not per-request.
+var riskReportProperties = map[string]toolProperty{
+	"upgradePath": {
+		Type:        "string",
+		Description: "Step-by-step version sequence to upgrade safely, with notes on intermediate stops required",
+	},
+	"riskScore": {
+		Type:        "integer",
+		Minimum:     &riskScoreMin,
+		Maximum:     &riskScoreMax,
+		Description: "Overall risk score: 1=trivial patch, 10=critical CVE or data loss risk",
+	},
+	"breakingChanges": {
+		Type:        "array",
+		Items:       &toolProperty{Type: "string"},
+		Description: "Breaking changes, API removals, or config renames between installed and latest versions",
+	},
+	"cvesFixed": {
+		Type:        "array",
+		Items:       &toolProperty{Type: "string"},
+		Description: "CVE identifiers fixed in versions newer than the installed version",
+	},
+	"recommendedAction": {
+		Type:        "string",
+		Enum:        []string{"upgrade", "urgent", "hold"},
+		Description: "upgrade=safe on next window, urgent=CVE/critical fix, hold=known issues with target",
+	},
+	"summary": {
+		Type:        "string",
+		Description: "2-3 sentence human-readable summary for the notification message",
+	},
+}
+
 // riskReportTool defines the tool Claude will call to return structured data.
 // By defining the output as a tool, Claude is forced to return structured JSON
 // rather than free-form prose — much more reliable than asking it to "return JSON".
@@ -75,42 +145,8 @@ var riskReportTool = anthropic.ToolUnionParam{
 		Name:        "report_risk",
 		Description: anthropic.String("Report the risk assessment and upgrade path for an outdated Helm chart"),
 		InputSchema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]interface{}{
-				"upgradePath": map[string]interface{}{
-					"type":        "string",
-					"description": "Step-by-step version sequence to upgrade safely, with notes on intermediate stops required",
-				},
-				"riskScore": map[string]interface{}{
-					"type":        "integer",
-					"minimum":     1,
-					"maximum":     10,
-					"description": "Overall risk score: 1=trivial patch, 10=critical CVE or data loss risk",
-				},
-				"breakingChanges": map[string]interface{}{
-					"type": "array",
-					"items": map[string]interface{}{
-						"type": "string",
-					},
-					"description": "Breaking changes, API removals, or config renames between installed and latest versions",
-				},
-				"cvesFixed": map[string]interface{}{
-					"type": "array",
-					"items": map[string]interface{}{
-						"type": "string",
-					},
-					"description": "CVE identifiers fixed in versions newer than the installed version",
-				},
-				"recommendedAction": map[string]interface{}{
-					"type":        "string",
-					"enum":        []string{"upgrade", "urgent", "hold"},
-					"description": "upgrade=safe on next window, urgent=CVE/critical fix, hold=known issues with target",
-				},
-				"summary": map[string]interface{}{
-					"type":        "string",
-					"description": "2-3 sentence human-readable summary for the notification message",
-				},
-			},
-			Required: []string{"upgradePath", "riskScore", "breakingChanges", "cvesFixed", "recommendedAction", "summary"},
+			Properties: mustPropertiesToMap(riskReportProperties),
+			Required:   []string{"upgradePath", "riskScore", "breakingChanges", "cvesFixed", "recommendedAction", "summary"},
 		},
 	},
 }
