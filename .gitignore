@@ -30,3 +30,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local build tools (platform-specific binaries installed by make targets)
+/bin/
